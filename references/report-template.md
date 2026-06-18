@@ -1,6 +1,6 @@
 # Report template
 
-Write to `owasp-review-<YYYYMMDD-HHMMSS>.md` at repo root, or under `docs/security-reviews/` if that directory exists. English only.
+Write to `docs/security-reviews/owasp-review-<YYYYMMDD-HHMMSS>.md` (create the directory if it does not exist). English only. Never add this file to version control — keep `docs/security-reviews/` in `.gitignore`.
 
 Use this exact skeleton; trim empty sections only if they would be misleading.
 

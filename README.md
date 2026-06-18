@@ -28,7 +28,7 @@
 - **Remediation plan** — generated for Critical, High, and Medium findings; you can edit it before any fix is applied.
 - **Stack-agnostic** — works with any language or framework.
 - **Multilingual UX** — all internal analysis and the report are produced in English, while communication with you happens in your own language.
-- **Dual output** — a Markdown report file plus a chat/console summary.
+- **Dual output** — a Markdown report file plus a chat/console summary. The report is written to `docs/security-reviews/` and kept out of version control (gitignored, never committed) so it cannot leak live vulnerability locations.
 
 ## OWASP Top 10 (2025) Coverage
 

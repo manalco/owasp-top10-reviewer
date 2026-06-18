@@ -199,7 +199,7 @@ Do not bundle unrelated fixes. Each finding gets its own focused edit.
 
 ## Step 8 — Deliver report + chat summary
 
-**Report file** — Markdown, English, written to `owasp-review-<YYYYMMDD-HHMMSS>.md` at repo root (or under `docs/security-reviews/` if that directory already exists). Use the template in `references/report-template.md`. The report includes:
+**Report file** — Markdown, English, written to `docs/security-reviews/owasp-review-<YYYYMMDD-HHMMSS>.md` (create the `docs/security-reviews/` directory if it does not exist). Use the template in `references/report-template.md`. The report includes:
 
 - Scope (what was audited)
 - Methodology (10 subagents, CVSS bands)
@@ -208,6 +208,11 @@ Do not bundle unrelated fixes. Each finding gets its own focused edit.
 - Remediation plan (with approval status per item)
 - What was actually fixed in this session
 - Appendix: Low/None findings
+
+**The report must never be added to version control.** A security report enumerates live vulnerabilities and their exact `file:line` locations — committing it hands an attacker a map of the unfixed weaknesses, and it lingers in git history even after deletion. To keep it out of the repo for good:
+
+- Before writing the report, make sure `docs/security-reviews/` is ignored by git. If the repo has a `.gitignore` and it does not already cover that path, append a `docs/security-reviews/` line to it. If there is no `.gitignore`, create one with that single entry. (The `.gitignore` change is a normal tracked edit; the reports themselves are what stay untracked.)
+- Never `git add`, stage, or commit the generated report, and never instruct the user to do so. If the user explicitly asks to commit it, warn them why that is risky before doing anything.
 
 **Chat summary** — in the user's language, terse:
 
