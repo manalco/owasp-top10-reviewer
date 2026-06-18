@@ -64,5 +64,6 @@ Ask the user, in their language, whether to: approve as-is, remove items, reorde
 
 ## Report and summary
 
-- Write the Markdown report in English to `owasp-review-<YYYYMMDD-HHMMSS>.md` at repo root, or under `docs/security-reviews/` if that directory exists. Use `references/report-template.md`.
+- Write the Markdown report in English to `docs/security-reviews/owasp-review-<YYYYMMDD-HHMMSS>.md` (create the directory if needed). Use `references/report-template.md`.
+- The report must never enter version control: ensure `docs/security-reviews/` is in `.gitignore` (add it, or create `.gitignore`, if missing) and never `git add`/commit the report. It maps live vulnerabilities, so committing it would expose the unfixed weaknesses and persist them in history.
 - Post the chat summary in the user's language: scope, counts by band, what was fixed, what was deferred, path to the report.
