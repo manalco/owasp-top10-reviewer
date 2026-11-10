@@ -18,7 +18,7 @@
 > - With **10 subagents** each reading the relevant code, input is multiplied up to **~10×** → roughly **2.5M tokens**.
 > - Add per-agent overhead (instructions, reasoning, findings reporting) and the orchestrator's consolidation + remediation plan: **~150K–300K tokens**.
 >
-> Actual consumption depends heavily on file size, code density, number of findings, and how much of the codebase each subagent needs to read. Scoping to specific paths is the single most effective way to reduce cost.
+> Actual consumption depends heavily on file size, code density, number of findings, and how much of the codebase each subagent needs to read. Scoping to specific paths is the single most effective way to reduce cost. On repeated scans, a maintained `THREAT_MODEL.md` also reduces cost by keeping known non-issues out of the analysis.
 
 ## Features
 
@@ -28,6 +28,7 @@
 - **Remediation plan** — generated for Critical, High, and Medium findings; you can edit it before any fix is applied.
 - **Stack-agnostic** — works with any language or framework.
 - **Multilingual UX** — all internal analysis and the report are produced in English, while communication with you happens in your own language.
+- **Threat model memory** — verified false positives and known non-issues are recorded, with evidence, in a `THREAT_MODEL.md` at the repo root. Later scans load it and skip those entries, saving tokens. Entries whose code changed are detected as stale and re-analyzed.
 - **Dual output** — a Markdown report file plus a chat/console summary. The report is written to `docs/security-reviews/` and kept out of version control (gitignored, never committed) so it cannot leak live vulnerability locations.
 
 ## OWASP Top 10 (2025) Coverage
@@ -48,13 +49,15 @@
 ## How It Works
 
 1. **Scope** — the orchestrator asks what to analyze: the whole repository, a git diff, or specific paths.
-2. **Dispatch** — 10 subagents run in parallel according to the chosen scope.
-3. **Consolidate** — findings are collected using a standard format: `{OWASP category, file:line, description, evidence, CVSS score, band, proposed fix}`.
-4. **Classify** — by numeric CVSS: Critical 9.0–10 · High 7.0–8.9 · Medium 4.0–6.9 · Low 0.1–3.9 · None 0.
-5. **Plan** — a remediation plan is generated for Critical/High/Medium findings. Low/None are listed but excluded from the plan.
-6. **Review** — the full plan is presented to you; you may modify it before remediation begins.
-7. **Remediate** — after approval, the fixes are applied.
-8. **Deliver** — a Markdown report is saved and a summary is shown in chat/console.
+2. **Load threat model** — if `THREAT_MODEL.md` exists, its entries are validated against the current code; valid ones are excluded from analysis.
+3. **Dispatch** — 10 subagents run in parallel according to the chosen scope.
+4. **Consolidate** — findings are collected using a standard format: `{OWASP category, file:line, description, evidence, CVSS score, band, proposed fix}`.
+5. **Classify** — by numeric CVSS: Critical 9.0–10 · High 7.0–8.9 · Medium 4.0–6.9 · Low 0.1–3.9 · None 0.
+6. **Plan** — a remediation plan is generated for Critical/High/Medium findings. Low/None are listed but excluded from the plan.
+7. **Review** — the full plan is presented to you; you may modify it before remediation begins, or reject items as not a vulnerability.
+8. **Remediate** — after approval, the fixes are applied.
+9. **Deliver** — a Markdown report is saved and a summary is shown in chat/console.
+10. **Update threat model** — confirmed false positives / non-issues are appended to `THREAT_MODEL.md` with their evidence. This file is meant to be committed; it never contains real vulnerabilities.
 
 ## Installation
 
