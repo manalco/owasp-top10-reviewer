@@ -7,11 +7,12 @@ description: Runs a full security audit of the codebase against the OWASP Top 10
 
 Automated security reviewer aligned with the **OWASP Top 10 — 2025** categorization. One orchestrator + ten category subagents working in parallel. The orchestrator is the only agent that talks to the human; subagents only report findings back.
 
-This skill produces three things:
+This skill produces four things:
 
 1. A consolidated list of findings, each tagged with an OWASP category, a numeric CVSS score, and a CVSS severity band.
 2. A remediation plan for Critical/High/Medium findings (Low/None are listed but not planned).
 3. After the human approves the plan, the actual fixes applied to the code, plus a Markdown report file.
+4. An updated `THREAT_MODEL.md` at the repo root documenting verified non-issues (false positives) with their evidence, so later runs skip them instead of re-analyzing them.
 
 ---
 
@@ -28,13 +29,14 @@ The split exists because reasoning quality is highest in English while user trus
 ## High-level flow
 
 1. **Ask scope.** In the user's language, ask what to audit: whole repo, a `git diff` (specify the range), or specific paths.
-2. **Assemble inputs.** Resolve the scope to a concrete file list with contents and metadata (language, framework hints, dependency manifests, config files).
-3. **Dispatch 10 subagents in parallel**, one per OWASP 2025 category. Pass each one the full scope bundle and its dedicated prompt from `agents/`.
-4. **Consolidate findings.** Merge, deduplicate, sort by CVSS.
+2. **Assemble inputs.** Resolve the scope to a concrete file list with contents and metadata (language, framework hints, dependency manifests, config files). If `THREAT_MODEL.md` exists at the repo root, load its known non-issues and validate them against the current code.
+3. **Dispatch 10 subagents in parallel**, one per OWASP 2025 category. Pass each one the full scope bundle, its dedicated prompt from `agents/`, and the known non-issues for its category.
+4. **Consolidate findings.** Merge, deduplicate, drop known non-issues, sort by CVSS.
 5. **Classify** by CVSS band (Critical 9.0–10.0 / High 7.0–8.9 / Medium 4.0–6.9 / Low 0.1–3.9 / None 0.0).
 6. **Build a remediation plan** covering only Critical, High, and Medium findings. Present the full plan to the user (in their language). The user may edit, reorder, drop, or add items.
 7. **Apply fixes** only after explicit approval of the plan. Apply per finding; verify each edit landed cleanly before moving on.
 8. **Deliver** a Markdown report file and a short chat-level summary (in the user's language).
+9. **Update the threat model.** Propose new non-issues and stale-entry changes for `THREAT_MODEL.md`; write them after user confirmation.
 
 The flow is strict: no fixes happen before plan approval. Subagents never apply edits.
 
@@ -86,6 +88,16 @@ For diff mode, include both the diff hunks and the **full file content** of each
 
 Exclude obvious noise (lockfile bodies beyond their names, generated code, minified assets, binaries).
 
+### Load the threat model (token saver)
+
+If `THREAT_MODEL.md` exists at the repository root, load it **before** dispatch. Format, validation, and matching rules are in `references/threat-model-format.md`. In short:
+
+- Parse `active` entries whose location is inside the scope.
+- Validate each entry's **anchor** (verbatim code snippet) against the current file with a targeted search. Anchor found → entry is valid. File gone or anchor not found → entry is stale for this run: the code is analyzed normally and the entry is revisited in Step 9.
+- Add a compact `known_non_issues` list (id, category, location, would-be-flagged-as, one-line reason — never the full evidence) to the bundle, filtered per category when dispatching.
+
+If the file does not exist, set `known_non_issues: []` and continue. Do not create it yet — that happens in Step 9, only if there is something to record.
+
 ## Step 3 — Dispatch 10 category subagents in parallel
 
 Spawn all ten in a **single batch** so they run concurrently. Each subagent receives:
@@ -93,6 +105,7 @@ Spawn all ten in a **single batch** so they run concurrently. Each subagent rece
 - The full scope bundle from Step 2.
 - The category-specific prompt from `agents/<category>.md`.
 - A reminder of the standard finding format (see `references/finding-format.md`).
+- The `known_non_issues` entries for its category (plus entries tagged `ANY`), with the rule: **do not report them and do not spend analysis on them** — they are already verified with evidence. A different issue at the same location is still reported.
 - A hard rule: **do not spawn further subagents**, do not edit files, return only findings as JSON.
 
 Categories and their prompts:
@@ -141,7 +154,8 @@ The full finding schema (including the `confidence` field and the rules for CVSS
 ## Step 4 — Consolidate findings
 
 - **Merge duplicates.** A single bug surfaced by two categories (e.g., a misconfigured CORS that A01 and A02 both flagged) becomes one finding tagged with both categories. Keep the highest CVSS and union the proposed fixes.
-- **Drop false positives** the orchestrator can quickly verify by re-reading the cited `file:line`. If the cited evidence does not match what the file actually contains, the finding is dropped.
+- **Drop known non-issues.** Any finding matching a valid `THREAT_MODEL.md` entry (same file, overlapping location or anchor in evidence, same category, same issue) is suppressed. Count suppressions for the report.
+- **Drop false positives** the orchestrator can quickly verify by re-reading the cited `file:line`. If the cited evidence does not match what the file actually contains, the finding is dropped (hallucination — never recorded in the threat model). If the code matches but the orchestrator verifies the issue is mitigated (e.g., a guard elsewhere, an unreachable path), drop it and keep it, with the mitigating evidence, as a threat-model candidate for Step 9.
 - **Sort** by CVSS descending, then by category code ascending for stable ordering.
 - **Cap noise.** If a single category returns more than ~20 findings, keep all Critical/High, sample the rest by representative pattern, and note "N additional Low/Medium findings of the same pattern omitted; see report appendix".
 
@@ -182,6 +196,7 @@ Present the **full plan** to the user in their language. Make it clear they can:
 - Reorder priority.
 - Add their own items.
 - Promote/demote items between in-plan and report-only.
+- Reject items as **not a vulnerability**, with a reason (e.g., "that endpoint only listens on localhost"). These become threat-model candidates for Step 9. Merely deprioritized or skipped items stay real issues and are not recorded.
 
 Wait for explicit approval. Do not apply any fix before approval. Approval is per-plan, not per-finding; once given, work through the approved items in order.
 
@@ -220,7 +235,21 @@ Do not bundle unrelated fixes. Each finding gets its own focused edit.
 - Counts by band (e.g., "2 Critical, 5 High, 8 Medium, 11 Low").
 - What was fixed.
 - What was deferred and why.
+- How many findings were suppressed by `THREAT_MODEL.md`.
 - Path to the report file.
+
+## Step 9 — Update THREAT_MODEL.md
+
+At the end of every scan, update the threat model at the repository root following `references/threat-model-format.md`:
+
+1. Collect candidates: findings dropped as verified-mitigated in Step 4, and findings the user rejected as not a vulnerability in Step 6. Each candidate needs concrete evidence (`file:line` + quote of the mitigating control); a candidate without verifiable evidence is discarded.
+2. Collect stale entries found while loading.
+3. Present both lists to the user in their language and ask for confirmation. For stale entries, propose refreshing the anchor or removing the entry.
+4. If nothing is confirmed, leave the file untouched (do not create an empty one).
+5. Otherwise create `THREAT_MODEL.md` (if missing) from the skeleton and append the confirmed entries; apply confirmed stale changes, mark the rest `stale`.
+6. `THREAT_MODEL.md` is tracked and meant to be committed. Offer to commit it in its own commit, separate from code fixes; never stage the report alongside it.
+
+**Never write a real, unfixed vulnerability into `THREAT_MODEL.md`.** Unlike the report, it is committed; it must only describe things that are verified to be safe.
 
 ---
 
@@ -228,6 +257,7 @@ Do not bundle unrelated fixes. Each finding gets its own focused edit.
 
 ```yaml
 session_language: <e.g., "es">  # used only for Step 8 and plan presentation
+known_non_issues: [<compact THREAT_MODEL.md entries for this category; may be empty>]
 scope_kind: "repo" | "diff" | "paths"
 files: [<path + content + language>, ...]
 manifests: [<dependency manifests with content>]
@@ -241,6 +271,7 @@ constraints:
   - "Return findings as JSON using the standard format."
   - "Write all output in English."
   - "Score every finding with CVSS v3.1."
+  - "Do not report or re-analyze anything listed in known_non_issues."
 ```
 
 `session_language` is informational for the subagents (e.g., to handle non-English strings in evidence); they must still write all output in English.
@@ -265,6 +296,8 @@ Only Critical, High, and Medium enter the remediation plan. Low and None are lis
 - **Do not auto-add Low findings to the plan** because they are "easy". They dilute attention from the items that matter.
 - **Do not translate findings or the report.** English is non-negotiable for the analysis surface. Translate only the chat-level summary and the scope/plan questions.
 - **Do not invent CVSS scores.** If a subagent cannot justify a score from the base metrics, mark `confidence: low` and pick the more conservative (lower) value.
+- **Do not re-analyze known non-issues.** Valid `THREAT_MODEL.md` entries are skipped; only stale entries get re-examined.
+- **Do not record real vulnerabilities in `THREAT_MODEL.md`**, nor findings the user only postponed or accepted as risk. Only verified non-issues with evidence.
 - **Do not redesign the system.** "Insecure Design" findings under A06 should propose the smallest change that mitigates the specific risk found, not a re-architecture.
 
 ## Files in this skill
@@ -288,7 +321,8 @@ owasp-top-10-reviewer/
     ├── owasp-top-10-2025.md                       ← canonical category definitions
     ├── cvss-scoring.md                            ← how to score, base-metric defaults
     ├── finding-format.md                          ← JSON schema for findings
-    └── report-template.md                         ← Markdown report layout
+    ├── report-template.md                         ← Markdown report layout
+    └── threat-model-format.md                     ← THREAT_MODEL.md format + lifecycle
 ```
 
 Load reference files lazily — only the step that actually needs them.

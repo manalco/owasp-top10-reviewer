@@ -73,6 +73,9 @@ Concise list of `file:line` edits applied, grouped by finding id.
 
 - Subagent for A0X returned incomplete: <reason>.
 - N findings dropped as false positives after orchestrator re-verification.
+- N findings suppressed by `THREAT_MODEL.md` (entries: TM-001, TM-004, ...).
+- N `THREAT_MODEL.md` entries stale (anchor no longer matches code) and re-analyzed: TM-00X, ...
+- N new `THREAT_MODEL.md` entries recorded this session: TM-00Y, ...
 
 ## Appendix — Low / None findings (not in plan)
 

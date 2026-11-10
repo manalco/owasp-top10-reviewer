@@ -61,3 +61,4 @@ Every subagent returns a single JSON object with this shape. The orchestrator pa
 - Never fabricate `file:line` references. If you cannot pin the exact line, return the closest line and note the uncertainty in `description`.
 - Never propose a fix you cannot justify from the evidence shown.
 - Do not include findings outside your assigned category. If you suspect overlap, leave the cross-category tag to the orchestrator.
+- Do not report anything listed in `known_non_issues` and do not spend analysis on it — it is already verified as safe. Report only a **different** issue at the same location.
